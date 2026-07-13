@@ -9,6 +9,15 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
+            if let notice = queue.notice {
+                Text(notice)
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(.orange.opacity(0.12))
+                    .transition(.opacity)
+            }
             Divider()
             if queue.jobs.isEmpty {
                 dropZone
@@ -16,6 +25,7 @@ struct ContentView: View {
                 jobList
             }
         }
+        .animation(.default, value: queue.notice)
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
         .overlay {
             if isDropTargeted {
@@ -94,22 +104,24 @@ struct ContentView: View {
 
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         let group = DispatchGroup()
-        var urls: [URL] = []
+        // Indexed slots: provider completions land on background threads in
+        // arbitrary order, but the queue should preserve the drag order.
+        var slots = [URL?](repeating: nil, count: providers.count)
         let lock = NSLock()
 
-        for provider in providers {
+        for (index, provider) in providers.enumerated() {
             group.enter()
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
                 if let url {
                     lock.lock()
-                    urls.append(url)
+                    slots[index] = url
                     lock.unlock()
                 }
                 group.leave()
             }
         }
         group.notify(queue: .main) {
-            queue.ingest(urls: urls)
+            queue.ingest(urls: slots.compactMap { $0 })
         }
         return true
     }

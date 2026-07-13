@@ -34,9 +34,11 @@ enum JobStatus: Equatable {
 struct TranscriptionJob: Identifiable {
     let id = UUID()
     let sourceURL: URL
+    /// Assigned at enqueue time so same-basename sources (a.mp3 + a.wav)
+    /// never silently clobber each other's transcript.
+    let outputURL: URL
     var status: JobStatus = .queued
     var transcript: String = ""
 
     var filename: String { sourceURL.lastPathComponent }
-    var outputURL: URL { sourceURL.deletingPathExtension().appendingPathExtension("txt") }
 }

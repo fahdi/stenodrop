@@ -46,21 +46,31 @@ struct WhisperEngine: Sendable {
         return size > 400_000_000
     }
 
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var binaryCache: [String: String] = [:]
+
+    /// Pure filesystem lookup (no subprocess) so it is safe to call from the
+    /// main thread. Hits are cached; misses are not, so "Check Again" works
+    /// after the user installs a dependency.
     static func findBinary(_ name: String) -> String? {
-        let candidates = [
+        cacheLock.lock()
+        let cached = binaryCache[name]
+        cacheLock.unlock()
+        if let cached { return cached }
+
+        var candidates = [
             "/opt/homebrew/bin/\(name)",
             "/usr/local/bin/\(name)",
             "/opt/homebrew/opt/whisper-cpp/bin/\(name)",
         ]
+        let envPath = ProcessInfo.processInfo.environment["PATH"] ?? ""
+        candidates += envPath.split(separator: ":").map { "\($0)/\(name)" }
+
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
+            cacheLock.lock()
+            binaryCache[name] = path
+            cacheLock.unlock()
             return path
-        }
-        // Fall back to PATH lookup.
-        if let out = try? run("/usr/bin/env", ["which", name]).stdout
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-            !out.isEmpty, FileManager.default.isExecutableFile(atPath: out)
-        {
-            return out
         }
         return nil
     }
@@ -123,6 +133,18 @@ struct WhisperEngine: Sendable {
         let stderr: String
     }
 
+    private static let processLock = NSLock()
+    nonisolated(unsafe) private static var activeProcesses: [Process] = []
+
+    /// Kill any in-flight ffmpeg/whisper child so quitting the app never
+    /// leaves an orphan burning CPU.
+    static func terminateActiveProcesses() {
+        processLock.lock()
+        let running = activeProcesses
+        processLock.unlock()
+        for p in running where p.isRunning { p.terminate() }
+    }
+
     @discardableResult
     static func run(_ launchPath: String, _ arguments: [String]) throws -> ProcessResult {
         let process = Process()
@@ -135,28 +157,45 @@ struct WhisperEngine: Sendable {
         process.standardError = errPipe
         process.standardInput = FileHandle.nullDevice
 
-        // Accumulate asynchronously so a full pipe buffer can never deadlock the child.
+        // Read each pipe to EOF on its own background thread: the continuous
+        // drain means the child can never block on a full pipe buffer, and
+        // each Data is touched by exactly one thread until group.wait()
+        // establishes the happens-before edge back to this one.
         var outData = Data()
         var errData = Data()
-        let ioQueue = DispatchQueue(label: "vibetranscribe.process.io")
-        outPipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            ioQueue.sync { outData.append(chunk) }
+        let group = DispatchGroup()
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
         }
-        errPipe.fileHandleForReading.readabilityHandler = { handle in
-            let chunk = handle.availableData
-            ioQueue.sync { errData.append(chunk) }
+        group.enter()
+        DispatchQueue.global(qos: .utility).async {
+            errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
         }
 
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            // Child never spawned: close the write ends so the readers see EOF
+            // instead of hanging forever.
+            try? outPipe.fileHandleForWriting.close()
+            try? errPipe.fileHandleForWriting.close()
+            group.wait()
+            throw error
+        }
+
+        processLock.lock()
+        activeProcesses.append(process)
+        processLock.unlock()
+
         process.waitUntilExit()
+        group.wait()
 
-        outPipe.fileHandleForReading.readabilityHandler = nil
-        errPipe.fileHandleForReading.readabilityHandler = nil
-        ioQueue.sync {
-            outData.append(outPipe.fileHandleForReading.availableData)
-            errData.append(errPipe.fileHandleForReading.availableData)
-        }
+        processLock.lock()
+        activeProcesses.removeAll { $0 === process }
+        processLock.unlock()
 
         return ProcessResult(
             exitCode: process.terminationStatus,

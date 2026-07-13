@@ -8,6 +8,8 @@ struct JobRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Expand/collapse tap lives on the header only, so selecting text
+            // in the transcript below never collapses the row.
             HStack(spacing: 10) {
                 statusIcon
                 VStack(alignment: .leading, spacing: 2) {
@@ -25,6 +27,12 @@ struct JobRowView: View {
                         Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     }
                     .buttonStyle(.borderless)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if !job.transcript.isEmpty {
+                    withAnimation { expanded.toggle() }
                 }
             }
             if expanded, !job.transcript.isEmpty {
@@ -55,12 +63,6 @@ struct JobRowView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if !job.transcript.isEmpty {
-                withAnimation { expanded.toggle() }
-            }
-        }
     }
 
     @ViewBuilder

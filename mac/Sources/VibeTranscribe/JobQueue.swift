@@ -2,17 +2,25 @@ import Foundation
 
 @MainActor
 final class JobQueue: ObservableObject {
+    static let shared = JobQueue()
+
     @Published var jobs: [TranscriptionJob] = []
     @Published var translateToEnglish = true
+    @Published var notice: String?
 
     private var isProcessing = false
+    private var noticeClearTask: Task<Void, Never>?
 
     static let audioExtensions: Set<String> = [
-        "wav", "mp3", "m4a", "aac", "flac", "ogg", "oga", "opus",
-        "aiff", "aif", "caf", "amr", "wma", "mp4", "mov", "m4v", "webm", "mkv",
+        "wav", "mp3", "m4a", "m4b", "aac", "flac", "ogg", "oga", "opus",
+        "aiff", "aif", "caf", "amr", "wma", "3gp",
+        "mp4", "mov", "m4v", "avi", "webm", "mkv",
     ]
 
     var hasFinishedJobs: Bool { jobs.contains { $0.status.isFinished } }
+    var hasActiveWork: Bool {
+        jobs.contains { $0.status == .queued || $0.status.isActive }
+    }
 
     // MARK: - Ingest
 
@@ -33,13 +41,39 @@ final class JobQueue: ObservableObject {
         let pendingPaths = Set(
             jobs.filter { !$0.status.isFinished }.map { $0.sourceURL.path })
         var seen = pendingPaths
+        var added = 0
         for file in files {
-            let path = file.standardizedFileURL.path
-            guard !seen.contains(path) else { continue }
-            seen.insert(path)
-            jobs.append(TranscriptionJob(sourceURL: file.standardizedFileURL))
+            let source = file.standardizedFileURL
+            guard !seen.contains(source.path) else { continue }
+            seen.insert(source.path)
+            jobs.append(
+                TranscriptionJob(sourceURL: source, outputURL: outputURL(for: source)))
+            added += 1
+        }
+
+        if added == 0, !urls.isEmpty {
+            showNotice("No supported audio files in that drop.")
         }
         pump()
+    }
+
+    /// `song.txt`, unless another queued source (e.g. song.wav vs song.mp3)
+    /// already claims it — then `song.mp3.txt`.
+    private func outputURL(for source: URL) -> URL {
+        let claimed = Set(
+            jobs.filter { $0.sourceURL.path != source.path }.map { $0.outputURL.path })
+        let primary = source.deletingPathExtension().appendingPathExtension("txt")
+        if !claimed.contains(primary.path) { return primary }
+        return source.appendingPathExtension("txt")
+    }
+
+    private func showNotice(_ text: String) {
+        notice = text
+        noticeClearTask?.cancel()
+        noticeClearTask = Task {
+            try? await Task.sleep(for: .seconds(5))
+            if !Task.isCancelled { self.notice = nil }
+        }
     }
 
     private func audioFiles(in directory: URL) -> [URL] {
