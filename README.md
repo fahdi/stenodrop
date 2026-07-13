@@ -6,6 +6,21 @@ Perfect for non-native English speakers who think in one language but work in En
 
 ---
 
+## Mac App
+
+There is now a native macOS app in [`mac/`](mac/): drag-and-drop files or folders for
+batch transcription — offline, free, Whisper small model, Urdu + ~100 languages, with a
+translate-to-English toggle. Transcripts are saved as `.txt` next to each audio file.
+
+```bash
+brew install whisper-cpp ffmpeg
+cd mac && ./scripts/make-app.sh   # → dist/VibeTranscribe.app
+```
+
+See [mac/README.md](mac/README.md) for details.
+
+---
+
 ## 🎯 Features
 
 ✅ **Multilingual Support** - Auto-detects 96+ languages  
