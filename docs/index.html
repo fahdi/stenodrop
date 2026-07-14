@@ -211,15 +211,15 @@ h2{font-weight:900;font-size:clamp(30px,4.2vw,46px);letter-spacing:-.01em;line-h
 .dl-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:48px}
 @media(max-width:1020px){.dl-cards{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:640px){.dl-cards{grid-template-columns:1fr}}
-.dl{border:1.5px solid var(--ink);background:var(--sheet);padding:26px 26px 30px;display:flex;flex-direction:column;gap:10px}
+.dl{border:1.5px solid var(--ink);background:var(--sheet);padding:26px 26px 24px;display:flex;flex-direction:column;gap:14px;min-height:100%}
 .dl.detected{outline:3px solid var(--red);outline-offset:-1.5px}
-.dl-os{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
-.dl-os h3{font-size:22px;font-weight:900}
+.dl-os{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-height:60px}
+.dl-os h3{font-size:22px;font-weight:900;line-height:1.15}
 .dl-badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;border:1px solid var(--dim);color:var(--dim);padding:3px 8px;white-space:nowrap}
 .dl-badge.live{border-color:var(--red);color:var(--red);font-weight:700}
-.dl p{font-size:14px;color:var(--ink-2);flex:1}
-.dl .btn{justify-content:center}
-.dl-note{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.dl p{font-size:14px;line-height:1.55;color:var(--ink-2);height:66px;overflow:hidden}
+.dl .btn{justify-content:center;white-space:nowrap}
+.dl-note{font-family:var(--mono);font-size:11.5px;line-height:1.6;color:var(--dim);margin-top:auto;padding-top:14px;border-top:1px solid var(--rule)}
 .dl-soon{margin-top:26px;border:1px dashed var(--dim);padding:16px 22px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-family:var(--mono);font-size:13px;color:var(--ink-2);background:var(--paper-2)}
 .dl-soon b{color:var(--red);letter-spacing:.1em;text-transform:uppercase;font-size:11.5px}
 
@@ -447,26 +447,26 @@ footer{border-top:1px solid var(--ink);margin-top:30px}
   <div class="dl-cards rv">
     <div class="dl" id="dl-mac">
       <div class="dl-os"><h3>macOS</h3><span class="dl-badge live">Available</span></div>
-      <p>Native Swift app for macOS 14+. Fastest of the family — Metal-accelerated, plus in-app recording.</p>
-      <a class="btn btn-primary" id="mac-link" href="https://github.com/fahdi/stenodrop/releases/download/v0.2.0/StenoDrop-0.2.0-macos.zip">↓ Download for Mac</a>
+      <p>Native Swift app, Metal-accelerated, with in-app live recording.</p>
+      <a class="btn btn-primary" id="mac-link" href="https://github.com/fahdi/stenodrop/releases/download/v0.2.0/StenoDrop-0.2.0-macos.zip">↓ Download</a>
       <span class="dl-note">Unsigned beta: right-click → Open the first time.</span>
     </div>
     <div class="dl" id="dl-win">
       <div class="dl-os"><h3>Windows</h3><span class="dl-badge live" id="win-badge">Available</span></div>
-      <p>Windows 10/11 installer. Same engine, same rule: your audio never leaves the machine.</p>
-      <a class="btn btn-primary" id="win-link" href="https://github.com/fahdi/stenodrop/releases/download/v0.2.0/StenoDrop_0.2.0_x64-setup.exe">↓ Download for Windows</a>
+      <p>Windows 10/11 installer. Your audio never leaves the machine.</p>
+      <a class="btn btn-primary" id="win-link" href="https://github.com/fahdi/stenodrop/releases/download/v0.2.0/StenoDrop_0.2.0_x64-setup.exe">↓ Download</a>
       <span class="dl-note">SmartScreen may warn on unsigned betas — “More info → Run anyway”.</span>
     </div>
     <div class="dl" id="dl-linux">
       <div class="dl-os"><h3>Linux</h3><span class="dl-badge live" id="linux-badge">Available</span></div>
-      <p>AppImage and .deb. If your distro can play a sound, it can transcribe one.</p>
-      <a class="btn btn-primary" id="linux-link" href="https://github.com/fahdi/stenodrop/releases/download/v0.2.0/StenoDrop_0.2.0_amd64.AppImage">↓ Download AppImage</a>
-      <span class="dl-note">chmod +x and run — or grab the <a href="https://github.com/fahdi/stenodrop/releases/download/v0.2.0/StenoDrop_0.2.0_amd64.deb">.deb</a>.</span>
+      <p>AppImage or .deb. If your distro can play a sound, it can transcribe one.</p>
+      <a class="btn btn-primary" id="linux-link" href="https://github.com/fahdi/stenodrop/releases/download/v0.2.0/StenoDrop_0.2.0_amd64.AppImage">↓ Download</a>
+      <span class="dl-note">chmod +x and run — or grab the <a href="https://github.com/fahdi/stenodrop/releases/download/v0.2.0/StenoDrop_0.2.0_amd64.deb">.deb</a> instead.</span>
     </div>
     <div class="dl" id="dl-android">
       <div class="dl-os"><h3>Android</h3><span class="dl-badge live">Beta APK</span></div>
-      <p>Android 8+. Pick a folder, transcripts land beside your audio — all on-device.</p>
-      <a class="btn btn-primary" href="https://github.com/fahdi/stenodrop-android/releases/download/v0.1.0/StenoDrop-0.1.0-android.apk">↓ Download APK</a>
+      <p>Android 8+. Pick a folder, transcripts land beside your audio, all on-device.</p>
+      <a class="btn btn-primary" id="android-link" href="https://github.com/fahdi/stenodrop-android/releases/download/v0.1.1/StenoDrop-0.1.1-android.apk">↓ Download</a>
       <span class="dl-note">Sideload: allow “Install unknown apps”. Play Store listing coming.</span>
     </div>
   </div>
@@ -579,19 +579,21 @@ paintTheme();
   document.getElementById(id)?.classList.add('detected');
 })();
 
-// wire download links to latest release assets (auto-upgrades when CI publishes)
-fetch('https://api.github.com/repos/fahdi/stenodrop/releases/latest')
-  .then(r=>r.ok?r.json():null)
-  .then(rel=>{
-    if(!rel||!rel.assets)return;
-    const find=re=>rel.assets.find(a=>re.test(a.name));
-    const mac=find(/\.zip$/i)||find(/\.dmg$/i);
-    const win=find(/\.(exe|msi)$/i);
-    const lin=find(/\.(AppImage|deb)$/i);
-    if(mac)document.getElementById('mac-link').href=mac.browser_download_url;
-    if(win){const l=document.getElementById('win-link');l.href=win.browser_download_url;l.textContent='↓ Download for Windows';l.classList.remove('btn-ghost');l.classList.add('btn-primary');document.getElementById('win-badge').textContent='Available';document.getElementById('win-badge').classList.add('live')}
-    if(lin){const l=document.getElementById('linux-link');l.href=lin.browser_download_url;l.textContent='↓ Download for Linux';l.classList.remove('btn-ghost');l.classList.add('btn-primary');document.getElementById('linux-badge').textContent='Available';document.getElementById('linux-badge').classList.add('live')}
-  }).catch(()=>{});
+// Keep download links pointed at each repo's actual latest release —
+// href only, so button labels/badges never drift from the consistent
+// "↓ Download" set in the markup above.
+function wireLatestRelease(repo, linkId, pick){
+  fetch(`https://api.github.com/repos/${repo}/releases/latest`)
+    .then(r=>r.ok?r.json():null)
+    .then(rel=>{
+      const asset = rel && rel.assets && pick(rel.assets);
+      if(asset) document.getElementById(linkId).href = asset.browser_download_url;
+    }).catch(()=>{});
+}
+wireLatestRelease('fahdi/stenodrop', 'mac-link', a => a.find(x=>/\.zip$/i.test(x.name)));
+wireLatestRelease('fahdi/stenodrop', 'win-link', a => a.find(x=>/\.(exe|msi)$/i.test(x.name)));
+wireLatestRelease('fahdi/stenodrop', 'linux-link', a => a.find(x=>/\.AppImage$/i.test(x.name)));
+wireLatestRelease('fahdi/stenodrop-android', 'android-link', a => a.find(x=>/\.apk$/i.test(x.name)));
 </script>
 </body>
 </html>
