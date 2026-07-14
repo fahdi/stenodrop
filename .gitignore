@@ -39,7 +39,7 @@ htmlcov/
 *.cover
 
 # Project specific - exclude JS app files
-src/
+/src/
 public/
 /index.html
 package*.json
