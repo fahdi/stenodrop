@@ -1,0 +1,79 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  mac-app:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and zip StenoDrop.app
+        run: |
+          cd mac && ./scripts/make-app.sh
+          cd dist && ditto -c -k --keepParent StenoDrop.app "StenoDrop-${GITHUB_REF_NAME#v}-macos.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: mac/dist/*.zip
+
+  windows-app:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version '^2' --locked
+      - name: Build NSIS installer
+        run: cd desktop && cargo tauri build --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+
+  linux-app:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Webkit deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libasound2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version '^2' --locked
+      - name: Build AppImage + deb
+        run: cd desktop && cargo tauri build --bundles appimage,deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+            desktop/src-tauri/target/release/bundle/deb/*.deb
+
+  publish:
+    needs: [mac-app, windows-app, linux-app]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Checksums
+        run: cd assets && sha256sum * > SHA256SUMS.txt
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*
+          generate_release_notes: true
