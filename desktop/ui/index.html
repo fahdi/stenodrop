@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>StenoDrop</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ============ SETUP SCREEN (model download) ============ -->
+  <section id="setup-screen" class="screen hidden">
+    <header class="masthead">
+      <p class="case-line"><span>IN THE MATTER OF</span><span>FIRST-RUN SETUP</span></p>
+      <h1 class="brand">STENODROP</h1>
+      <div class="rule-double"></div>
+    </header>
+
+    <div class="setup-body">
+      <p class="setup-copy">
+        StenoDrop transcribes on your machine — nothing is uploaded.
+        One court reporter must be sworn in first: the Whisper
+        <strong>small</strong> model (&#8776;&#8201;466&#8202;MB), downloaded once and
+        stored locally.
+      </p>
+
+      <button id="download-btn" class="btn btn-primary">Download model</button>
+
+      <div id="download-progress" class="progress hidden">
+        <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+        <p id="progress-label" class="progress-label">0%</p>
+      </div>
+
+      <p id="download-error" class="error-line hidden"></p>
+    </div>
+  </section>
+
+  <!-- ============ MAIN SCREEN ============ -->
+  <section id="main-screen" class="screen hidden">
+    <header class="masthead">
+      <p class="case-line"><span>OFFLINE TRANSCRIPTION</span><span id="docket-count">DOCKET — 0 FILES</span></p>
+      <h1 class="brand">STENODROP</h1>
+      <div class="rule-double"></div>
+    </header>
+
+    <div id="drop-zone" class="drop-zone" role="button" tabindex="0"
+         aria-label="Drop audio files or folders, or press Enter to browse">
+      <p class="drop-title">Drop audio files or folders here</p>
+      <p class="drop-sub">wav &middot; mp3 &middot; m4a &middot; flac &middot; ogg &middot; video containers &middot; 16 more</p>
+      <div class="drop-actions">
+        <button id="add-files-btn" class="btn">Add files&#8230;</button>
+        <button id="add-folder-btn" class="btn">Add folder&#8230;</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <label class="control">
+        <span class="control-label">Language</span>
+        <select id="language-select"></select>
+      </label>
+      <label class="control control-toggle" for="translate-toggle">
+        <span class="control-label">Translate to English</span>
+        <input type="checkbox" id="translate-toggle" checked />
+        <span class="toggle-visual" aria-hidden="true"></span>
+      </label>
+      <span class="controls-spacer"></span>
+      <button id="cancel-btn" class="btn btn-quiet hidden">Cancel queued</button>
+      <button id="clear-btn" class="btn btn-quiet hidden">Clear finished</button>
+    </div>
+
+    <p id="notice" class="notice hidden"></p>
+
+    <main class="docket">
+      <ol id="job-list" class="job-list"></ol>
+      <p id="empty-docket" class="empty-docket">Nothing on the docket. Drop audio to begin the record.</p>
+    </main>
+
+    <footer class="colophon">
+      <span>TRANSCRIBED LOCALLY &middot; NO AUDIO LEAVES THIS MACHINE</span>
+      <span>WHISPER SMALL</span>
+    </footer>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>
