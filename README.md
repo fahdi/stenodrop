@@ -6,6 +6,14 @@ Perfect for non-native English speakers who think in one language but work in En
 
 ---
 
+## Try It Online
+
+No install: **[fahdi.github.io/stenodrop/app](https://fahdi.github.io/stenodrop/app/)** runs entirely
+in your browser, nothing uploaded. See the [full site](https://fahdi.github.io/stenodrop/) for the
+native Mac, Windows, Linux, and Android apps.
+
+---
+
 ## Mac App
 
 There is now a native macOS app in [`mac/`](mac/): drag-and-drop files or folders for
