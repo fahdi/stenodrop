@@ -4,6 +4,17 @@
 // happens in worker.js so this thread never blocks.
 import { downloadZip } from "https://cdn.jsdelivr.net/npm/client-zip@2.5.0/index.js";
 
+// Placeholder for the not-yet-deployed cloud transcription server (see
+// docs/superpowers/specs/2026-07-16-cloud-transcription-design.md for the
+// API contract and full architecture). This will not respond until the
+// server is actually deployed to isupercoder.com; the reachability check
+// below (checkCloudAvailability) handles that gracefully by disabling the
+// Cloud mode option rather than letting anyone pick it and hit a dead end.
+// Update this single constant once the real server is live.
+const CLOUD_API_BASE = "https://api.isupercoder.com/stenodrop";
+const CLOUD_HEALTH_TIMEOUT_MS = 3500;
+const CLOUD_REQUEST_TIMEOUT_MS = 120000;
+
 // Same 19-language + auto list as the native apps (mac/Sources/StenoDrop/JobQueue.swift).
 const LANGUAGES = [
   ["auto", "Auto-detect"],
@@ -42,7 +53,7 @@ const WHISPER_SAMPLE_RATE = 16000;
 // translation. It cannot target any other language, so the output picker is
 // just those two checkboxes (see worker.js for the inference side of this).
 const SETTINGS_KEY = "stenodrop-web-settings";
-const DEFAULT_SETTINGS = { language: "auto", outputs: { original: true, english: true } };
+const DEFAULT_SETTINGS = { language: "auto", outputs: { original: true, english: true }, mode: "offline" };
 
 function loadSettings() {
   try {
@@ -60,6 +71,7 @@ function loadSettings() {
     return {
       language: typeof parsed.language === "string" ? parsed.language : DEFAULT_SETTINGS.language,
       outputs,
+      mode: parsed.mode === "cloud" ? "cloud" : "offline",
     };
   } catch (e) {
     return { ...DEFAULT_SETTINGS, outputs: { ...DEFAULT_SETTINGS.outputs } };
@@ -76,6 +88,7 @@ function saveSettings() {
           original: outputOriginal.checked,
           english: outputEnglish.checked,
         },
+        mode: currentMode,
       })
     );
   } catch (e) {
@@ -99,6 +112,9 @@ const modelStatus = document.getElementById("model-status");
 const modelStatusText = document.getElementById("model-status-text");
 const modelProgressBar = document.getElementById("model-progress-bar");
 const deviceNote = document.getElementById("device-note");
+const modeOfflineBtn = document.getElementById("mode-offline-btn");
+const modeCloudBtn = document.getElementById("mode-cloud-btn");
+const modeCloudNote = document.getElementById("mode-cloud-note");
 
 // ---------- state ----------
 /** @type {{id:string, file:File, status:string, texts:Object<string,string>, error:string}[]} */
@@ -107,6 +123,8 @@ let jobSeq = 0;
 let isProcessing = false;
 let modelReady = false;
 let downloadTotals = new Map(); // file -> {loaded, total}
+let currentMode = "offline"; // "offline" | "cloud"
+let cloudAvailable = null; // null = still checking, true/false once the /health check settles
 
 // ---------- language picker ----------
 for (const [code, name] of LANGUAGES) {
@@ -125,6 +143,7 @@ if (languageSelect.value !== initialSettings.language) {
 }
 outputOriginal.checked = initialSettings.outputs.original;
 outputEnglish.checked = initialSettings.outputs.english;
+currentMode = initialSettings.mode;
 
 // Enforce "at least one output checked" - if the user unchecks the last one,
 // auto-recheck it rather than allowing a zero-output state.
@@ -142,6 +161,59 @@ outputEnglish.addEventListener("change", () => {
   saveSettings();
 });
 languageSelect.addEventListener("change", saveSettings);
+
+// ---------- mode picker (offline / cloud) ----------
+function setMode(mode) {
+  if (mode === "cloud" && cloudAvailable === false) return; // can't select a mode we know is unreachable
+  currentMode = mode;
+  modeOfflineBtn.classList.toggle("active", mode === "offline");
+  modeOfflineBtn.setAttribute("aria-pressed", String(mode === "offline"));
+  modeCloudBtn.classList.toggle("active", mode === "cloud");
+  modeCloudBtn.setAttribute("aria-pressed", String(mode === "cloud"));
+  saveSettings();
+}
+
+modeOfflineBtn.addEventListener("click", () => setMode("offline"));
+modeCloudBtn.addEventListener("click", () => setMode("cloud"));
+
+// Reflect the persisted mode in the UI immediately; the cloud reachability
+// check below may still downgrade it to disabled/offline if the server
+// isn't responding, but we don't want to wait on the network for the
+// initial paint.
+setMode(currentMode);
+
+/**
+ * Check whether the cloud endpoint is up. Runs in the background on page
+ * load (never blocks initial render) and updates the Cloud option once it
+ * settles: enabled if healthy, disabled with an honest note otherwise. If
+ * the user had Cloud selected from a previous visit but it's unreachable
+ * now, fall back to Offline rather than leaving a dead-end mode selected.
+ */
+async function checkCloudAvailability() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CLOUD_HEALTH_TIMEOUT_MS);
+  try {
+    const res = await fetch(CLOUD_API_BASE + "/health", { signal: controller.signal });
+    if (!res.ok) throw new Error("health check returned " + res.status);
+    await res.json();
+    cloudAvailable = true;
+    modeCloudBtn.disabled = false;
+    modeCloudBtn.removeAttribute("aria-disabled");
+    modeCloudNote.hidden = true;
+    modeCloudNote.classList.remove("mode-unavailable");
+  } catch (e) {
+    cloudAvailable = false;
+    modeCloudBtn.disabled = true;
+    modeCloudBtn.setAttribute("aria-disabled", "true");
+    modeCloudNote.hidden = false;
+    modeCloudNote.classList.add("mode-unavailable");
+    modeCloudNote.textContent = "Cloud processing isn't available right now. Offline still works normally.";
+    if (currentMode === "cloud") setMode("offline");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+checkCloudAvailability();
 
 // ---------- worker ----------
 const worker = new Worker("./worker.js", { type: "module" });
@@ -301,6 +373,11 @@ function pump() {
   next.status = "transcribing";
   renderQueue();
 
+  if (currentMode === "cloud") {
+    runCloudJob(next);
+    return;
+  }
+
   const outputs = selectedOutputs();
 
   decodeToPCM(next.file)
@@ -319,6 +396,94 @@ function pump() {
     .catch((err) => {
       handleError(next.id, "Couldn't decode audio: " + (err.message || err));
     });
+}
+
+/**
+ * Run one job through the cloud API instead of the local worker pipeline.
+ * Maps the same "original"/"english" output checklist used by Offline mode
+ * onto the cloud API's single `translate` boolean: "original" -> one request
+ * with translate=false, "english" -> one request with translate=true. When
+ * both are checked this fires two independent requests against the same
+ * file, matching how the local dual-output feature already works (the
+ * worker also runs the pipeline twice, once per task, over the same decoded
+ * audio). Requests run in parallel; if one fails and the other succeeds we
+ * still record the text we got and surface only the failed half's error.
+ */
+async function runCloudJob(job) {
+  const outputs = selectedOutputs();
+  const language = languageSelect.value;
+
+  const requests = outputs.map((kind) =>
+    cloudTranscribe(job.file, language, kind === "english").then(
+      (text) => ({ kind, ok: true, text }),
+      (err) => ({ kind, ok: false, error: String(err && err.message ? err.message : err) })
+    )
+  );
+
+  const results = await Promise.all(requests);
+  const texts = {};
+  const errors = [];
+  for (const r of results) {
+    if (r.ok) texts[r.kind] = r.text;
+    else errors.push(`${r.kind}: ${r.error}`);
+  }
+
+  if (Object.keys(texts).length === 0) {
+    handleError(job.id, errors.join(" / ") || "Cloud transcription failed.");
+    return;
+  }
+
+  handleDone(job.id, texts);
+  if (errors.length > 0) {
+    // Partial success: at least one output came back. Surface the failure
+    // for the other one without discarding the text we did get.
+    job.error = "Some outputs failed: " + errors.join(" / ");
+    renderQueue();
+  }
+}
+
+/** POST one file to the cloud /transcribe endpoint. Returns the transcript text or throws. */
+async function cloudTranscribe(file, language, translate) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CLOUD_REQUEST_TIMEOUT_MS);
+  try {
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("language", language);
+    form.append("translate", translate ? "true" : "false");
+
+    let res;
+    try {
+      res = await fetch(CLOUD_API_BASE + "/transcribe", {
+        method: "POST",
+        body: form,
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (err && err.name === "AbortError") {
+        throw new Error("Request timed out. The server took too long to respond.");
+      }
+      throw new Error("Couldn't reach the cloud server. Check your internet connection.");
+    }
+
+    let payload = null;
+    try {
+      payload = await res.json();
+    } catch (e) {
+      // Non-JSON response body; fall through to the generic status-based error below.
+    }
+
+    if (!res.ok) {
+      const message = (payload && payload.error) || `Server returned ${res.status}.`;
+      throw new Error(message);
+    }
+    if (!payload || typeof payload.text !== "string") {
+      throw new Error("Server returned an unexpected response.");
+    }
+    return payload.text;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Which output variants ("original", "english") are currently checked. */
@@ -421,6 +586,13 @@ function renderQueue() {
         transcript.textContent =
           (files.length > 1 ? `[${f.label}] ` : "") + (f.text || "(empty transcript)");
         row.appendChild(transcript);
+      }
+      if (job.error) {
+        // Partial cloud failure: one output succeeded, the other didn't.
+        const err = document.createElement("div");
+        err.className = "q-error";
+        err.textContent = job.error;
+        row.appendChild(err);
       }
     } else if (job.status === "failed") {
       const err = document.createElement("div");

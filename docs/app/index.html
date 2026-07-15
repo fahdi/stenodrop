@@ -102,6 +102,28 @@ section{padding:0 0 56px}
 .progress-bar{background:var(--red);height:100%;width:0%;transition:width .2s ease}
 #device-note{font-family:var(--mono);font-size:12.5px;color:var(--dim);margin-top:10px}
 
+/* ---------- mode picker (offline / cloud) ---------- */
+.mode-picker{margin:28px 0}
+.mode-picker > .mode-label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+.mode-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:600px){.mode-cards{grid-template-columns:1fr}}
+.mode-card{
+  text-align:left;cursor:pointer;background:var(--sheet);border:1.5px solid var(--ink-2);
+  padding:18px 20px;font-family:inherit;color:inherit;display:flex;flex-direction:column;gap:8px;
+  transition:border-color .15s ease,background .15s ease;
+}
+.mode-card:hover{border-color:var(--red)}
+.mode-card.active{border-color:var(--red);border-width:2px;background:var(--paper-2)}
+.mode-card:disabled,.mode-card[aria-disabled="true"]{cursor:not-allowed;opacity:.55}
+.mode-card:disabled:hover,.mode-card[aria-disabled="true"]:hover{border-color:var(--ink-2)}
+.mode-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mode-card-title{font-family:var(--slab);font-weight:900;font-size:18px}
+.mode-card-badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);border:1px solid var(--rule);padding:3px 8px;flex:none}
+.mode-card.active .mode-card-badge{color:var(--red);border-color:var(--red)}
+.mode-card-copy{font-family:var(--mono);font-size:13px;color:var(--ink-2);line-height:1.6}
+.mode-card-note{font-family:var(--mono);font-size:12px;color:var(--dim);line-height:1.5}
+.mode-card-note.mode-unavailable{color:var(--red)}
+
 /* ---------- controls ---------- */
 .controls{display:flex;flex-wrap:wrap;gap:20px;align-items:center;margin:26px 0;font-family:var(--mono);font-size:13.5px}
 .control{display:flex;flex-direction:column;gap:6px}
@@ -213,6 +235,27 @@ footer{border-top:1px solid var(--ink);margin-top:30px}
     </div>
   </div>
   <div id="device-note" hidden></div>
+
+  <div class="mode-picker">
+    <div class="mode-label">Processing mode</div>
+    <div class="mode-cards" id="mode-cards" role="group" aria-label="Processing mode">
+      <button type="button" class="mode-card active" id="mode-offline-btn" data-mode="offline" aria-pressed="true">
+        <div class="mode-card-head">
+          <span class="mode-card-title">Offline</span>
+          <span class="mode-card-badge">Default</span>
+        </div>
+        <p class="mode-card-copy">Nothing ever leaves your device. Your audio is processed right here in this browser tab, free, private, and available even without an internet connection. Accuracy is good and works well for most audio.</p>
+      </button>
+      <button type="button" class="mode-card" id="mode-cloud-btn" data-mode="cloud" aria-pressed="false">
+        <div class="mode-card-head">
+          <span class="mode-card-title">Cloud</span>
+          <span class="mode-card-badge">Best accuracy</span>
+        </div>
+        <p class="mode-card-copy">Your audio is sent to a server running a much larger, more accurate model, then the transcript is sent back. The audio isn't stored; it's deleted right after processing. Requires an internet connection.</p>
+        <p class="mode-card-note" id="mode-cloud-note" hidden></p>
+      </button>
+    </div>
+  </div>
 
   <div class="controls">
     <div class="control">
