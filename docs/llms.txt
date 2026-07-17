@@ -1,19 +1,24 @@
 # StenoDrop
 
 > StenoDrop is a free, open-source batch audio transcription app for macOS,
-> Windows, and Linux. Users drag in audio files or whole folders; every file
-> is transcribed locally (Whisper small model) and saved as a .txt transcript
-> next to its source. Nothing is uploaded — it works fully offline.
+> Windows, and Linux. Users drag in audio files, whole folders, or downloaded
+> YouTube caption files; audio is transcribed locally (Whisper) and saved as a
+> .txt transcript next to its source, and caption files (.srt/.vtt) are
+> cleaned of YouTube's rolling duplication and translated into timed subtitle
+> tracks. Nothing is uploaded. It works fully offline.
 
 Key facts:
 - Price: free, no account, no usage limits, open source (github.com/fahdi/stenodrop)
-- Platforms: native Swift app for macOS 14+; Tauri (Rust) app for Windows 10+ and Linux; mobile planned
-- Languages: ~100 via Whisper, including first-class Urdu; optional one-toggle translation to English
-- Formats: wav, mp3, m4a, flac, ogg, opus, aiff, caf, voice memos, and audio tracks of mp4/mov/webm video
-- Output: <filename>.txt written beside each audio file; transcripts also viewable/copyable in the app
-- Privacy: all processing on-device; the Whisper model (~466 MB) downloads once on first run
+- Platforms: native Swift app for macOS 15+; Tauri (Rust) app for Windows 10+ and Linux; mobile planned
+- Languages: ~100 via Whisper, including first-class Urdu; one-toggle translation to English, plus multi-language transcript translation on device (Apple language packs, about 25 target languages)
+- Models: three switchable tiers on macOS: Efficient (fast, single-language), Enhanced (accents and noise), Maximum (multilingual and Indic-language audio with code-switching)
+- Captions: drop a downloaded .srt/.vtt (e.g. from yt-dlp or YouTube Studio); StenoDrop deduplicates rolling auto-captions, retimes them, saves a cleaned track plus translated tracks per selected language; manually authored files pass through untouched
+- Formats: wav, mp3, m4a, flac, ogg, opus, aiff, caf, voice memos, audio tracks of mp4/mov/webm video, and .srt/.vtt caption files
+- Output: <filename>.txt beside each audio file; <name>.<lang>.srt/.vtt cleaned and translated caption tracks; transcripts also viewable/copyable in the app
+- Privacy: all processing on-device; speech models download once on first run
 - macOS extras: live recording with rolling transcription, Metal GPU acceleration
 - macOS prerequisites: brew install whisper-cpp ffmpeg; Windows/Linux builds bundle the engine
+- Known limitation: Apple Translation does not cover Urdu, Bengali, Persian, Punjabi, or Pashto as translation targets; caption files in those languages still get the cleaned track
 
 Downloads: https://github.com/fahdi/stenodrop/releases/latest
 Site: https://fahdi.github.io/stenodrop/

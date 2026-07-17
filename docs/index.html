@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>StenoDrop: Free Offline Audio Transcription for Mac, Windows, Linux and Android</title>
-<meta name="description" content="Drop a folder of audio files on StenoDrop and get a .txt transcript next to every one. Free, offline, and private. Works in 100 languages, with instant Urdu to English translation. Available for Mac, Windows, Linux, and Android.">
+<meta name="description" content="Drop a folder of audio files on StenoDrop and get a .txt transcript next to every one. Clean and translate downloaded YouTube captions too. Free, offline, and private. Works in 100 languages, with instant Urdu to English translation. Available for Mac, Windows, Linux, and Android.">
 <meta property="og:title" content="StenoDrop: drop a folder, read everything">
-<meta property="og:description" content="Free offline batch audio transcription. 100 languages, nothing leaves your device. Mac, Windows, Linux, and Android.">
+<meta property="og:description" content="Free offline batch audio transcription and YouTube caption cleanup. 100 languages, nothing leaves your device. Mac, Windows, Linux, and Android.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://fahdi.github.io/stenodrop/">
 <meta property="og:image" content="https://fahdi.github.io/stenodrop/og.png">
@@ -25,7 +25,7 @@
   "operatingSystem": "macOS 14+, Windows 10+, Linux, Android 8+",
   "applicationCategory": "UtilitiesApplication",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-  "description": "Free offline batch audio transcription app. Drag and drop audio files or folders; transcripts are saved as .txt next to each file. Runs entirely on-device, supports 100 languages including Urdu with translation to English.",
+  "description": "Free offline batch audio transcription app. Drag and drop audio files or folders; transcripts are saved as .txt next to each file. Cleans and translates downloaded YouTube caption files. Runs entirely on-device, supports 100 languages including Urdu with translation to English.",
   "url": "https://fahdi.github.io/stenodrop/",
   "downloadUrl": "https://github.com/fahdi/stenodrop/releases/latest"
 }
@@ -361,11 +361,11 @@ footer{border-top:1px solid var(--ink);margin-top:30px}
   <div class="f-track">
     <div class="f-set">
       <span class="f-item">WAV</span><span class="f-item">MP3</span><span class="f-item">M4A</span><span class="f-item">FLAC</span><span class="f-item">OGG</span><span class="f-item">OPUS</span><span class="f-item">AIFF</span><span class="f-item">CAF</span><span class="f-item">VOICE MEMOS</span><span class="f-item">MP4</span><span class="f-item">MOV</span><span class="f-item">WEBM</span>
-      <span class="f-note">100 languages · translate to English · runs locally</span>
+      <span class="f-note">100 languages · on-device translation · YouTube caption cleanup · runs locally</span>
     </div>
     <div class="f-set" aria-hidden="true">
       <span class="f-item">WAV</span><span class="f-item">MP3</span><span class="f-item">M4A</span><span class="f-item">FLAC</span><span class="f-item">OGG</span><span class="f-item">OPUS</span><span class="f-item">AIFF</span><span class="f-item">CAF</span><span class="f-item">VOICE MEMOS</span><span class="f-item">MP4</span><span class="f-item">MOV</span><span class="f-item">WEBM</span>
-      <span class="f-note">100 languages · translate to English · runs locally</span>
+      <span class="f-note">100 languages · on-device translation · YouTube caption cleanup · runs locally</span>
     </div>
   </div>
 </div>
@@ -429,7 +429,7 @@ footer{border-top:1px solid var(--ink);margin-top:30px}
     <div class="d-row">
       <div class="d-no">ENTRY 01</div>
       <div class="d-act">Drop</div>
-      <div class="d-desc">Drag in audio files, or an entire folder. StenoDrop searches every subfolder and queues each audio file it finds.</div>
+      <div class="d-desc">Drag in audio files, an entire folder, or a downloaded YouTube caption file. StenoDrop searches every subfolder and queues everything it can work on.</div>
     </div>
     <div class="d-row">
       <div class="d-no">ENTRY 02</div>
@@ -453,13 +453,16 @@ footer{border-top:1px solid var(--ink);margin-top:30px}
     <div class="ex"><div class="ex-tag">Exhibit B: Batch</div><h3>Folders, not files</h3><p>Point it at a year of voice memos. StenoDrop queues everything, works through the list, and skips duplicates automatically.</p></div>
     <div class="ex"><div class="ex-tag">Exhibit C: اردو</div><h3 class="ur">Urdu → English, built in</h3><p>First-class Urdu support with one-tap translation to English, or keep the original script. 100 languages in total.</p></div>
     <div class="ex"><div class="ex-tag">Exhibit D: Formats</div><h3>Any audio you have</h3><p>wav, mp3, m4a, flac, opus, voice memos, even the audio from your videos.</p></div>
-    <div class="ex"><div class="ex-tag">Exhibit E: Free</div><h3>$0, no strings</h3><p>Open source. No account, no trial, no meter. The voice-recognition software downloads once (about 466 MB) and it's yours to keep.</p></div>
+    <div class="ex"><div class="ex-tag">Exhibit E: Free</div><h3>$0, no strings</h3><p>Open source. No account, no trial, no meter. The speech model downloads once and is yours to keep, in whichever size you choose.</p></div>
     <div class="ex"><div class="ex-tag">Exhibit F: Fast</div><h3>Hardware-accelerated</h3><p>Batches that would cost hours of upload time finish while you make tea.</p></div>
+    <div class="ex"><div class="ex-tag">Exhibit G: Captions</div><h3>YouTube captions, cleaned</h3><p>Auto-generated captions download with every line doubled. Drop the .srt or .vtt on StenoDrop and get a clean, correctly timed track, plus translated versions ready to re-upload.</p></div>
+    <div class="ex"><div class="ex-tag">Exhibit H: Models</div><h3>Pick your power</h3><p>Three models: Efficient for quick single-language work, Enhanced for accents and noisy rooms, Maximum for multilingual and Indic-language audio with code-switching.</p></div>
+    <div class="ex"><div class="ex-tag">Exhibit I: Multilingual</div><h3>One recording, many languages</h3><p>Check as many target languages as you like. Every transcript is saved once per language, translated on your device by Apple's language packs.</p></div>
   </div>
 
   <div class="statement rv">
     <h3>Speak in any language. <em>Read it in English.</em></h3>
-    <p>One toggle turns Urdu, Hindi, Arabic, Punjabi, Pashto, or any of 100 languages, into clean English text. Switch translation off to keep the original script, or set the language manually when a short clip confuses auto-detect.</p>
+    <p>One toggle turns Urdu, Hindi, Arabic, Punjabi, Pashto, or any of 100 languages, into clean English text. Switch translation off to keep the original script, or set the language manually when a short clip confuses auto-detect. And when English is not enough, check more languages under Translate To: each transcript is saved once per language, translated on your device.</p>
   </div>
 </section>
 
