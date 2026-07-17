@@ -1,7 +1,9 @@
 # StenoDrop Mac — Translate Downloaded Caption Files (.srt/.vtt)
 
-Date: 2026-07-17 · Status: Revised after adversarial review round 1 (33
-findings, 11 accepted revisions). Supersedes the same-day draft in place.
+Date: 2026-07-17 · Status: FROZEN for implementation after two adversarial
+review rounds (r1: 33 findings/11 revisions; r2: 31 findings/11 revisions,
+several verified against a live yt-dlp download). Do not deviate from
+normative rules below without surfacing the deviation.
 
 ## Why this exists
 
@@ -12,18 +14,16 @@ transcript with per-line timing. The ask: drop that file into StenoDrop
 and get back cleaned and translated caption files, still correctly timed,
 usable for re-upload as subtitles.
 
-Two things make this non-trivial, and both were mis-modeled in the first
-draft of this spec (caught by adversarial review):
+Two hard facts shape everything below:
 
 1. YouTube **auto-generated** captions download as "rolling" captions with
-   a specific, structurally marked duplication format (documented below) —
-   not the fuzzy word-overlap the draft assumed.
-2. Apple's Translation framework — the app's on-device translation engine —
-   **does not support Urdu, Bengali, Persian, Punjabi, or Pashto** in any
-   direction. The flagship "Urdu captions → English" scenario cannot be
-   served by translation in v1. The feature stays valuable for those
-   languages because the cleaned, deduplicated source-language track is
-   itself the primary output (see Output).
+   a specific, structurally marked duplication format (next section).
+2. Apple's Translation framework **does not support Urdu, Bengali,
+   Persian, Punjabi, or Pashto** in any direction. The flagship
+   "Urdu captions → English" scenario cannot be served by translation in
+   v1. The feature stays valuable for those languages because the
+   cleaned, deduplicated source-language track is itself the primary
+   output (see Output).
 
 ## The real input format (ground truth, verified against real files)
 
@@ -31,27 +31,32 @@ A yt-dlp-downloaded auto-caption `.vtt` is a strict alternation of:
 
 - a **building cue** (a few seconds long) whose payload is TWO lines:
   line 1 is the *previous* completed line repeated verbatim as plain
-  text; line 2 is the *new* line, carrying inline timestamp/`<c>` tags,
-  e.g. `we<00:00:00.960><c> shall</c><00:00:01.500><c> fight</c>`;
+  text; line 2 is the *new* line, usually carrying inline
+  timestamp/`<c>` tags, e.g.
+  `we<00:00:00.960><c> shall</c><00:00:01.500><c> fight</c>`;
 - a **static cue** (~10 ms) holding just the completed plain line,
   sometimes with a filler line that is `&nbsp;` or a single space.
 
-Key properties: duplication is whole-line and verbatim; the new content
-is the only line containing inline timestamp tags; tags can split
-mid-word (`TH<c>E </c><c>SE</c><c>RG</c>…` for `THE SERGEANT`).
-Manually-authored caption files have none of this structure. SRT files
-produced by `yt-dlp --convert-subs srt` have tags stripped but **keep**
-the whole-line duplication.
+Verified caveats (from a live download, checked in as a fixture):
+- yt-dlp only tags tokens *after* a line's first word, so a
+  single-token new line (`Yeah`, `thinking`, `[Music]`) carries **zero**
+  inline tags. Tag presence is a keep signal, never the only one.
+- A cue's only payload can be an untagged `[Music]` line lasting 18+ s.
+- Duplication is whole-line and verbatim; tags can split mid-word
+  (`TH<c>E </c><c>SE</c><c>RG</c>…` for `THE SERGEANT`).
+- Manually-authored `.vtt` files may be tag-free, or may legitimately
+  use inline timestamp tags with no rolling duplication (karaoke /
+  word-highlight files). Neither may be altered by reflow.
+- SRT files from `yt-dlp --convert-subs srt` have tags stripped but
+  **keep** the whole-line duplication.
 
 ## Architecture
 
 ### 1. Parsing (`CaptionFile`, new — pure, no I/O in the core)
 
-Shared cue model, designed so reflow still has the structural signal:
-
 ```swift
 struct CueLine {
-    let text: String          // tag-free text (see tag stripping below)
+    let text: String          // tag-free text (see tag stripping)
     let hadInlineTimestamps: Bool
 }
 struct Cue {
@@ -61,265 +66,371 @@ struct Cue {
 }
 ```
 
-- **Timestamps**: SRT `HH:MM:SS,mmm` (comma); VTT `(HH:)?MM:SS.mmm` (dot,
-  hours OPTIONAL, tolerate >2-digit hours). Stored as integer ms. Parsing
-  and re-serialization round-trip exactly (test: timestamp string →
-  ms → string is identity). Rounding, never truncation, anywhere a
-  conversion happens.
-- **Byte/line level**: strip a leading U+FEFF BOM; normalize `\r\n` and
-  bare `\r` to `\n` before block splitting; EOF is an implicit block
-  terminator (missing trailing newline is fine). Output convention:
-  UTF-8, no BOM, `\n` line endings.
+- **Character encoding (decode ladder, normative)**: (1) BOM-sniff
+  UTF-8 / UTF-16LE / UTF-16BE and decode accordingly; (2) otherwise
+  attempt strict UTF-8; (3) fall back to `windowsCP1252` (never fails,
+  covers Latin-1) and attach a job warning ("decoded as Windows-1252").
+  Output is always UTF-8, no BOM, `\n` line endings. Fixtures:
+  UTF-16LE-BOM SRT; Windows-1252 SRT with accented characters.
+- **Timestamps**: SRT `HH:MM:SS,mmm` (comma); VTT `(HH:)?MM:SS.mmm`
+  (dot, hours OPTIONAL, tolerate >2-digit hours). Stored as integer ms;
+  rounding, never truncation. Timestamp string → ms → string is an
+  identity round-trip (tested, including expected end-times pinned for
+  the canonical real fixture).
+- **Byte/line level**: strip a leading U+FEFF post-decode; normalize
+  `\r\n` and bare `\r` to `\n` before block splitting; EOF is an
+  implicit block terminator.
 - **VTT grammar**: the `WEBVTT` header is a *block* — yt-dlp emits
-  `WEBVTT\nKind: captions\nLanguage: en` — consume everything to the
-  first blank line, tolerate `WEBVTT <text>`. The `Language:` header
-  value is captured and surfaced (used for source-language priority).
-  Skip `NOTE`, `STYLE`, and `REGION` blocks. Cue identifiers and cue
-  settings (`align:`, `position:`, `line:`) are parsed past and dropped.
+  `WEBVTT\nKind: captions\nLanguage: en` — consume to the first blank
+  line, tolerate `WEBVTT <text>`. Capture the `Language:` value (feeds
+  source-language priority). Skip `NOTE`/`STYLE`/`REGION` blocks. Cue
+  identifiers and cue settings (`align:` etc.) parsed past and dropped.
 - **Inline tag stripping**: pure deletion of tag spans with
-  byte-for-byte concatenation of surrounding text — no separator
-  insertion, no trimming inside the line (tags split mid-word; joining
-  with spaces garbles every cue). Fixture required using a real
+  byte-for-byte concatenation — no separator insertion, no trimming
+  inside the line (tags split mid-word). Fixture uses the real
   character-chunked sample.
-- **Entities**: decode character references on parse (`&amp;` `&lt;`
-  `&gt;` `&nbsp;` `&lrm;` `&rlm;` and numeric forms). Re-escape `&` and
-  `<` when serializing VTT (SRT needs none).
-- **Emptiness predicate** (feeds the reflow drop rule): empty after
-  entity decoding and trimming Unicode whitespace *including* U+00A0 and
-  zero-width (Cf) characters. Explicit in tests — not delegated to
-  "trim".
-- **What is intentionally dropped** (enumerated, not hand-waved):
-  styling tags (`<i>`, `<b>`, `<c.class>`), cue settings/positioning,
+- **Entities**: decode `&amp;` `&lt;` `&gt;` `&nbsp;` `&lrm;` `&rlm;`
+  and numeric forms on parse; re-escape `&` and `<` on VTT
+  serialization (SRT needs none).
+- **Emptiness predicate**: empty after entity decoding and trimming
+  Unicode whitespace *including* U+00A0 and zero-width (Cf) characters.
+  Explicit in tests.
+- **Dropped on output (enumerated)**: styling tags, cue settings,
   cue identifiers, word-level timestamps, ruby. `<v Speaker>` is
-  content: preserved as a `Speaker: ` text prefix. Output is
-  structure-preserving plain text — "same container format in, same out"
-  (`.srt` → `.srt`, `.vtt` → `.vtt`), not a styling-faithful copy.
-- **SRT indices**: ignored on parse (timestamps are the identity; real
-  files have gaps and duplicates), always regenerated `1..N` on write.
+  content: preserved as a `Speaker: ` prefix. Output is
+  structure-preserving plain text in the same container format.
+- **SRT indices**: ignored on parse; regenerated `1..N` on write.
 
 ### 2. Rolling-caption reflow (pure `[Cue] -> [Cue]`, deterministic)
 
-No fuzzy matching exists anywhere in v1. Two structural paths:
+**Dispatch is structural, never format-named.** The same rolling-run
+detector gates both containers; all reflow rules apply **only inside
+detected runs**. Everything outside runs — including the entirety of
+tag-free manual files and karaoke files — passes through byte-identical
+modulo §1's enumerated stripping.
 
-- **VTT path** (tags present): keep only lines with
-  `hadInlineTimestamps == true` (the new content); drop cues containing
-  no timestamped line (the ~10 ms static duplicates). That's the whole
-  algorithm — the format marks new content for us.
-- **SRT path** (tags stripped by conversion, duplication retained):
-  exact whole-line dedup — drop a block's first line when it equals the
-  previous block's last emitted line; drop blocks contributing no new
-  line, folding their duration into the **previous** cue (fold direction
-  is normative) and only when contiguous; otherwise the range is simply
-  discarded. Gated by a rolling-run detector: the dedup only applies
-  within runs of ≥3 consecutive line-shift pairs with near-contiguous
-  timing. Clean files with genuine repeats ("We will rock you" ×2,
-  `[Applause]`, echoed answers) pass through byte-identical.
+**Named constant ε = 1000 ms** governs every timing judgment below
+(run continuity, extension, folding), with explicit tolerance for 1 ms
+rounding seams from comma↔dot conversion.
 
-**Timing rules**: within a rolling run, a completed line spans from its
-building cue's start to the next building cue's start *only when
-adjacent with no gap*. A gap above ~1 s, or absence of the rolling
-structure, ends the run: the cue keeps its own end. Inter-run gaps
-(silence, music, scene breaks) are **preserved** — no global
-"end = next start" rule (it would pin the last caption across minutes of
-silence). Timing outside detected runs is untouched. After any rewrite,
-`endMs` is clamped ≥ `startMs`. Cues are sorted by start before reflow;
-time-overlapping cue pairs (simultaneous speakers — legal VTT) are
-excluded from dedup entirely.
+**Run detector (normative)**: a rolling run is ≥3 consecutive
+*line-shift pairs*. A line-shift pair: block N+1 has ≥2 lines, its
+FIRST line whole-line-equals block N's last emitted line, AND it
+contributes at least one new line. Bare equality between single-line
+blocks (chants: four contiguous `Hey!` cues) never counts — the chant
+fixture must pass through byte-identical. On VTT, a run is the maximal
+sequence of building cues with inter-cue gap ≤ ε *after* static-cue
+removal; the alternating ~10 ms static echo cues are part of the
+signature. A time-overlapping cue pair (simultaneous speakers — legal
+VTT) is *transparent* for run-membership counting: the run continues
+through it; only that pair's dedup/fold is skipped.
+
+**Keep/drop inside a run**: a line is kept if it has inline timestamps
+OR it is non-blank and not whole-line-equal to the previously emitted
+line (the verbatim-dedup test — this is what preserves untagged
+one-token lines and `[Music]`). Only exact duplicates and empty lines
+are dropped. Cues left with no lines are dropped; their range folds
+into the **previous** cue only when contiguous (≤ ε), else discarded.
+The dedup equality test itself is **gap-independent** (a run-initial
+block's first line is compared against the last globally emitted line);
+ε governs timing rewrites only.
+
+**SRT path** (tags stripped, duplication retained): the same detector
+and the verbatim-dedup rule — drop a block's first line when it equals
+the previous block's last emitted line; drop blocks contributing no new
+line, folding as above.
+
+**Timing**: within a run, a completed line spans from its building
+cue's start to the next building cue's start when the gap ≤ ε;
+otherwise the cue keeps its own end. Inter-run gaps (silence, music,
+scene breaks) are **preserved**. Timing outside runs is untouched.
+After any rewrite, `endMs` clamped ≥ `startMs`. Cues sorted by start
+before processing.
+
+**Normative pass-through guarantees (each is a fixture)**: tag-free
+manual VTT → byte-identical; karaoke VTT → preserved; chant SRT →
+byte-identical; untagged `[Music]` cue and one-token untagged new line
+inside a run → preserved; silence gap → preserved.
 
 ### 3. Source language — explicit, prioritized, plumbed end-to-end
 
-Priority order:
-1. The VTT `Language:` header when present (ground truth from YouTube).
-2. The existing toolbar Language picker when not "auto" (the codebase's
-   own comment says auto-detect misfires on exactly this user's content —
-   Urdu heard as Hindi; romanized Urdu fools NLLanguageRecognizer too.
-   The override UI already exists; a manual override is therefore NOT
-   out of scope — it is the existing picker).
-3. `NLLanguageRecognizer` on the reflowed text as fallback. Runs inside
-   `Task.detached` with the recognizer created locally (it is not
-   Sendable; `JobQueue` is `@MainActor`).
+Priority: (1) VTT `Language:` header; (2) the toolbar Language picker
+when not "auto" (the override UI already exists — auto-detect misfires
+on exactly this user's content, Urdu heard as Hindi, and romanized Urdu
+fools NLLanguageRecognizer too); (3) `NLLanguageRecognizer` on the
+reflowed text, run inside `Task.detached` with the recognizer created
+locally (not Sendable; `JobQueue` is `@MainActor`).
 
-Language comparison is by `Locale.Language` components, never raw string
-equality — NLLanguageRecognizer returns `zh-Hans`/`zh-Hant` while the
-picker stores `zh`; a string compare silently breaks the skip rule for
-Chinese. The mapping table is part of the implementation. If detection
-returns nil or an out-of-list language: proceed, pass what we have, let
-the session decide. The detected/used source language is **displayed in
-the job row** so misdetection is visible before anyone re-uploads a
-broken track.
+Language comparison is by `Locale.Language` components, never raw
+strings (`zh-Hans` vs picker `zh`). Detection nil / out-of-list:
+proceed, pass what we have, let the session decide. The detected/used
+source is displayed in the job row.
 
 ### 4. Availability gate + honest scoping (the Urdu problem)
 
-Verified empirically: Apple Translation's supported set is ~25 languages
-(ar, da, de, en, es, fr, hi, id, it, ja, ko, nb, nl, pl, pt, ru, sv, th,
-tr, uk, vi, zh variants). **ur, bn, fa, pa, ps — all in
-`JobQueue.languages` — are unsupported as source or target.**
+Apple Translation's supported set is ~25 languages. **ur, bn, fa, pa,
+ps — all in `JobQueue.languages` — are unsupported as source or
+target.**
 
-- Pre-flight: after source resolution, call
-  `LanguageAvailability.status(from:to:)` for each selected target and
-  fail that language fast with a per-language, user-facing message
-  ("Apple Translation doesn't support Urdu") — surfaced via the job's
-  warnings, before any translate call. Unsupported languages never
-  reach a session.
-- The cleaned source-language track is still always produced (Output,
-  below), so the feature retains its core value for Urdu users: dedup.
-- v1 accepts the limitation; a non-Apple engine for unsupported
-  languages is a recorded follow-up, not silent scope creep.
-- Related, pre-existing: the audio pipeline's translate menu has the
-  same exposure for ur/bn/fa/pa/ps targets (audio → en is safe via
-  whisper). Filed as its own issue; not fixed by this feature.
+- Pre-flight per target: `LanguageAvailability.status(from:to:)`; fail
+  that language fast with a per-language user-facing message ("Apple
+  Translation doesn't support Urdu"), surfaced via job warnings, before
+  any translate call.
+- **Nil-source branch (normative)**: `status(from:to:)` takes a
+  non-optional source. When §3 resolution returns nil, call
+  `status(for: <sample of reflowed text>, to: target)` (macOS 15,
+  infers from sample) per target; on throw or indeterminate, fall
+  through to session-side failure handled by the per-language warning
+  path.
+- The cleaned source track is always produced, so unsupported-language
+  files still get the dedup value.
+- v1 accepts the limitation; a non-Apple engine is a recorded
+  follow-up. Related pre-existing exposure in the audio translate menu
+  (ur/bn/fa/pa/ps targets) is filed as its own issue, not fixed here.
 
-### 5. Translation unit — sentence grouping, not per-cue fragments
+### 5. Translation unit — chunking and redistribution (normative)
 
-`translations(from:)` translates each Request independently: batching
-fixes round-trip count, not context. Reflowed rolling cues are 3-8 word
-mid-sentence fragments; fragment-wise MT yields word salad, and SOV/SVO
-reordering (hi, ja, ko, tr are all in the picker) breaks cue-text ↔
-cue-timing correspondence anyway. Therefore:
+`translations(from:)` translates each Request independently; reflowed
+rolling cues are 3-8 word punctuation-free fragments, so per-cue
+translation yields word salad and SOV/SVO reordering breaks cue-text ↔
+timing correspondence. Therefore chunks, then redistribute:
 
-- Group reflowed cues into sentence-ish chunks (punctuation and
-  pause-gap boundaries — reflow already yields contiguous text).
-- Translate chunks via the batch API, one batch per target language.
-- Redistribute translated chunk text back across the original cue
-  timings proportionally by character count.
+**Chunking**:
+- Boundary set, exact: Unicode `Sentence_Terminal=Yes` (explicitly
+  covering `. ! ? … 。 ！ ？ ۔ ؟ ।`) — AND any inter-cue gap ≥ ε (same
+  constant as §2) is an unconditional boundary regardless of
+  punctuation (auto-captions are largely punctuation-free; without the
+  gap rule a lecture degenerates into one giant chunk).
+- Hard cap: 600 characters or 20 cues, whichever hits first, with a
+  deterministic forced split at the nearest word boundary.
+- Chunk boundaries are a strict superset of reflow run boundaries — a
+  chunk never spans two rolling runs.
+- Cues that time-overlap a neighbor are never merged into a multi-cue
+  chunk (each is its own single-cue chunk).
+- The `Speaker: ` prefix from `<v>` is stripped before building chunk
+  text, excluded from weights, re-attached verbatim to that cue's
+  translated text.
+- Chunk text = cue line texts joined with single spaces; one chunk =
+  one translator string, no internal newlines. Redistributed cue text
+  is single-line; no wrapping in v1.
 
-This is a deliberate v1 decision made with the quality evidence in
-front of it — not an implementation detail to discover mid-build.
+**Redistribution (an algorithm, not an adjective)**:
+- Weights: per-cue cleaned source text length in **grapheme clusters**
+  (Swift `Character` count), excluding Cf/format characters.
+- Cumulative proportional offsets into the translated string; snap each
+  offset to the nearest word boundary via locale-aware segmentation
+  (`NLTokenizer`/`enumerateSubstrings(.byWords)` with the *target*
+  language — handles spaceless ja/zh/ko/th); never split inside a
+  grapheme cluster; ties toward the earlier boundary; rounding
+  remainders by largest-remainder.
+- Empty-cue rule: a cue that would receive empty/whitespace-only text
+  (including zero-weight source cues) is dropped from that language's
+  output; the previous surviving cue in the chunk extends `endMs` to
+  cover it (fold-forward, mirroring §2), clamped ≥ `startMs`. A chunk
+  whose entire translation is empty emits the cleaned source text for
+  those cues with a `doneWithWarning` note.
+- Redistribution assigns **text only**: every surviving output cue's
+  `startMs`/`endMs` equals the reflowed source cue's.
+- Worked example (normative, in tests): source cues of grapheme lengths
+  [12, 5, 23] → offsets at 12/40 and 17/40 of the target string →
+  snapped to nearest target-language word boundaries → three cue texts,
+  none starting or ending mid-word.
+
+**Batching & partial failure**:
+- Cap each `translations(from:)` call at **300 chunks**; sub-batches
+  sequenced within a language.
+- Completed sub-batches are retained on failure. A failed/missing
+  chunk's cues fall back to their cleaned source text; the language
+  completes as `doneWithWarning` with counts ("3 of 41 segments
+  untranslated"). The protocol shape must express partial results
+  (per-sub-batch calls with these semantics) — a bare
+  `async throws -> [String]` cannot.
+- Responses matched to chunks by `clientIdentifier` (chunk index),
+  never array position (fake-engine test shuffles responses; another
+  omits one response).
+- Per-language progress driven by sub-batch completion so the
+  `.translating` row visibly moves.
+- Parsing and reflow run off the main actor inside the pump's
+  `Task.detached` (multi-MB folder drops must not beachball ingest).
 
 ### 6. TranslationBridge redesign (not "gains a batch method")
 
-The current bridge cannot carry this feature as-is. Known failure: the
-`.translationTask` closure only re-fires when the Configuration *value*
-changes; two consecutive same-target requests never trigger the second
-closure — the continuation leaks and the job wedges forever (today's
-audio path survives only because whisper's seconds-long gaps drain the
-queue to nil between requests). Required changes:
+Known failure to fix: `.translationTask` only re-fires when the
+Configuration *value* changes; two consecutive same-target requests
+never trigger the second closure — continuation leak, job wedged
+forever (today's audio path survives only because whisper's
+seconds-long gaps drain the queue between requests). Required:
 
-1. **Guaranteed configuration transition per request**: keep the stored
-   `Configuration` and call `invalidate()` (version bump) for each new
-   head of queue, or an ordering-safe nil-between-heads scheme.
-2. **Ordering-safe publish**: replace the fire-and-forget
-   `Task { @MainActor … }` publish with a mechanism that cannot reorder
-   (e.g. an `AsyncStream` consumed by a single main-actor task).
-3. **Batch-typed queue**: `PendingRequest` becomes batch-capable
-   (`texts: [String]`, explicit `sourceLanguage: Locale.Language?`,
-   `target: Locale.Language`); `TranslationEngine` gains
-   `translateBatch(_ texts: [String], from: Locale.Language?, to:
-   Locale.Language) async throws -> [String]` — protocol, fakes, and
-   the view closure all change shape.
-4. **clientIdentifier correlation**: responses matched to inputs by
-   `clientIdentifier` (chunk index), never array position. A fake-engine
-   test returns responses out of order and must still pass.
-5. `Configuration(source:target:)` carries the explicit source from §3 —
-   today's hardcoded `source: nil` goes away.
-6. Manual verification checklist gains: "two consecutive requests with
-   the same target language", and "first-ever translation to a language
-   triggers an in-session pack download — first batch is slow; per-
-   language failure (pack missing) must not fail the whole job".
+1. Guaranteed configuration transition per head-of-queue: keep the
+   stored `Configuration` and call `invalidate()` for same-target
+   heads (verified present at macOS 15 in the local SDK). The stored
+   Configuration lives in a MainActor-isolated published property
+   mutated exclusively by the single main-actor consumer below — NOT
+   the current per-render computed property
+   (`TranslationBridgeView.swift:38-43`), which resets the version
+   each render and reintroduces the wedge.
+2. Ordering-safe publish: replace the fire-and-forget
+   `Task { @MainActor }` with an `AsyncStream` consumed by one
+   main-actor task.
+3. Batch-typed queue: requests carry `texts: [String]`,
+   `sourceLanguage: Locale.Language?`, `target: Locale.Language`.
+   `Configuration` and `Request` are NOT Sendable — only Sendable
+   descriptors (`[String]`, `Locale.Language`, `UUID`) cross the
+   locked-bridge boundary.
+4. `Configuration(source:target:)` carries §3's explicit source
+   (today's hardcoded `source: nil` goes away).
+5. Manual checklist gains: two consecutive same-target requests;
+   first-ever translation to a language triggers an in-session pack
+   download (first batch slow; pack-missing fails per-language, never
+   the whole job).
 
-### 7. Job model — unified, not parallel
+### 7. Job model — unified, with the full call-site list
 
-Everything keys off the single `jobs: [TranscriptionJob]` array: the
-quit guard (`hasActiveWork`), ingest dedupe, the empty-state drop zone,
-`clearFinished`/`hasFinishedJobs`, and the one `ForEach`. A parallel
-caption-job array silently breaks all five. Therefore: one heterogeneous
-collection — `enum Job { case audio(TranscriptionJob); case
-captions(CaptionJob) }` (or a shared protocol), processed by the
-existing single-flight `pump()` loop, which also serializes bridge
-access. All five call sites are in scope and enumerated in the
-implementation issue.
+One heterogeneous collection: `enum Job { case audio(TranscriptionJob);
+case captions(CaptionJob) }` (or shared protocol), processed by the
+existing single-flight `pump()` (which also serializes bridge access).
+`JobStatus` gains `.translating` with per-language progress.
 
-`JobStatus` gains `.translating` (a minutes-long caption batch is not
-"Transcribing"), ideally with per-language progress ("Translating to
-French (2 of 3)"). The caption row: expanded view shows the reflowed cue
-text; "Reveal in Finder" generalizes to the output directory;
-per-language failures reuse `doneWithWarning` like the audio pipeline.
+**Enumerated call sites (all in scope)**:
+- `jobs` array sites: quit guard `hasActiveWork`
+  (JobQueue.swift:79-81 → StenoDropApp.swift), ingest dedupe
+  (`pendingPaths`), drop-zone empty state, `clearFinished`/
+  `hasFinishedJobs`, the `ForEach`.
+- `JobStatus.isActive` (TranscriptionJob.swift:22-24) is an `==` chain
+  that compiles unchanged when `.translating` is added and then
+  **silently breaks the quit guard** (app quits mid-batch without
+  warning). It becomes an exhaustive `switch` (pattern-match, not `==`,
+  since `.translating` carries progress values — Equatable comparisons
+  change meaning). Unit test: `JobStatus.translating(...).isActive ==
+  true`.
+- `== .queued` sites (JobQueue.swift:80, 160).
+- `pump()`'s in-place mutations (JobQueue.swift:167, 192, 194, 233) —
+  an enum forces extract-mutate-reassign or a settable-status protocol
+  and a per-kind pump branch.
+- `outputURL(for:)` (JobQueue.swift:120-126) — see §8.
+- `JobRowView` — typed `let job: TranscriptionJob` parameter; the
+  Reveal-in-Finder gate at JobRowView.swift:52 is `status == .done`,
+  but `doneWithWarning` is the COMMON caption success outcome
+  (Urdu-unsupported note, English-skipped note): **Reveal must also
+  show for `.doneWithWarning`**. `doneWithWarning`'s label
+  ("Done (not saved)") is wrong for caption jobs — make it
+  job-kind-aware. "Saved <file>"/"Reveal .txt" strings generalize.
+- Caption row: expanded view shows reflowed cue text; detected/used
+  source language shown; per-language failures via `doneWithWarning`.
 
-### 8. Ingest & output naming — both filter sites, no silent overwrites
+### 8. Ingest, output naming, re-run semantics
 
-- Both filter sites change: the single-file branch in `ingest(urls:)`
-  AND the directory enumerator `audioFiles(in:)` — otherwise folder
-  drops of caption files match nothing while single-file drops work.
-  Copy sweep: the "No supported audio files in that drop." notice, the
-  drop-zone copy, the NSOpenPanel prompt/message, the translate-menu
-  help text.
-- **Naming collision, concrete**: yt-dlp already writes
-  `<name>.<lang>.<ext>` — byte-identical to our output pattern.
-  Translating `Talk.en.vtt` with Urdu selected must not clobber a
-  user-downloaded `Talk.ur.vtt`. Rules: strip a recognized trailing ISO
-  language code from the input basename before appending the target
-  (`Talk.en.vtt` + ur → `Talk.ur.vtt` is fine *if free*); assign all
-  per-language output paths at enqueue time; check them against other
-  queued jobs' sources, other jobs' outputs, and pre-existing files on
-  disk — never silently overwrite a file the app didn't create; fall
-  back to the existing `appendingPathExtension` disambiguation pattern.
-- **Mixed folders**: a yt-dlp folder holds `Talk.mp4` + `Talk.en.vtt`
-  side by side; naïve ingest queues both and surprise-starts an
-  hours-long whisper job. v1 rule: when a caption file shares a
-  basename with a media file in the same drop, queue the caption file
-  and skip the media file, noting it in the drop notice. (No cancel
-  button exists app-wide; that stays a backlog item.)
+- **Both filter sites**: the single-file branch in `ingest(urls:)`
+  (JobQueue.swift:94) AND the directory enumerator `audioFiles(in:)`
+  (JobQueue.swift:137-150). Copy sweep: the drop notice, drop-zone
+  copy, NSOpenPanel prompt/message, translate-menu help text.
+- **Language-code stripping helper (shared, tested)**: strip one
+  recognized trailing ISO code from a basename (`Talk.en` → `Talk`).
+  Used by output naming AND the mixed-folder rule.
+- **Mixed folders**: compare *stripped* basenames (yt-dlp always writes
+  `<name>.<lang>.<ext>`, so unstripped comparison matches zero real
+  folders). `Talk.mp4` + `Talk.en.vtt` in one drop → only the caption
+  file queues, noted in the drop notice; `Talk.part2.vtt` does not
+  match `Talk.mp4`.
+- **Two-phase output claiming**: target-language paths (known at
+  enqueue from `targetLanguages`) are claimed at enqueue; the
+  source-track path is claimed at source-resolution time under
+  identical collision rules, surfaced in the job row. Every job (audio
+  included) exposes its full prospective output set; the collision
+  check unions over those sets (fixes the pre-existing audio hole where
+  per-language outputs are derived at write time and never claimed).
+- **Re-run semantics (decided)**: deterministic caption output names
+  (stripped basename + target code + container ext, plus the `.txt`
+  adjunct) are **app-owned and overwritten on re-run** — exactly how
+  the audio pipeline already overwrites `song.txt`. The
+  no-silent-overwrite rule applies to collisions with OTHER queued
+  jobs' sources/outputs and to pre-existing files whose names do NOT
+  match this job's own deterministic output set. Cross-launch re-runs
+  therefore overwrite same-named caption outputs. Fallback for genuine
+  collisions: the existing `appendingPathExtension` disambiguation.
 
 ### 9. Output
 
 - **Always** emit the reflowed source-language file
-  (`name.<sourceLang>.srt`/`.vtt`) as the primary output — analogous to
-  the audio pipeline always writing `filename.txt`. The reflowed cues
-  are *not* what's on disk; the cleaned track is the most valuable
-  artifact, and for unsupported-translation languages it is the whole
+  (`name.<sourceLang>.srt`/`.vtt`) — the cleaned track is the primary
+  artifact and, for unsupported-translation languages, the whole
   feature.
-- One timed subtitle file per successfully translated target language,
-  same container format as input.
-- When a selected target equals the source it is skipped **with a
-  visible note** in the job row ("English skipped — source is already
-  English; cleaned track saved"), never silently.
-- Cheap adjunct (in scope, trivially available from reflow output): a
-  flattened plain-text transcript `name.<sourceLang>.txt`.
+- One timed file per successfully translated target, same container
+  format as input.
+- Same-as-source target skipped **with a visible note** ("English
+  skipped — source is already English; cleaned track saved").
+- Cheap adjunct: flattened plain-text `name.<sourceLang>.txt`.
 - The original downloaded file is never modified.
 
 ## Malformed-input policy
 
-- Parsing is per-cue best-effort: skip unparseable blocks, count them,
-  surface the count via the existing `doneWithWarning` mechanism.
-- Whole-file reject (existing `showNotice` pattern, job marked failed)
-  only when zero valid cues parse. Never write N empty output files.
-- Cues sorted by start before processing; `endMs` clamped ≥ `startMs`.
+Per-cue best-effort: skip unparseable blocks, count them, surface via
+`doneWithWarning`. Whole-file reject (job failed, `showNotice` pattern)
+only when zero valid cues parse — never write N empty output files.
 
-## Testing plan (TDD; council-hardened)
+## Testing plan (TDD; council-hardened, two rounds)
 
-Pure and unit-tested: timestamp round-trip identity; BOM/CRLF/EOF
-handling; VTT header-block and `Language:` capture; NOTE/STYLE/REGION
-skipping; entity decode/re-escape; mid-word tag-chunk stripping
-(byte-for-byte concatenation fixture from a real sample); the emptiness
-predicate (U+00A0, zero-width); VTT structural reflow; SRT
-whole-line-dedup with run detector (clean-file pass-through
-byte-identical, genuine-repeats preservation); silence-gap fixture
-(gaps preserved); fold-direction; sentence grouping + proportional
-redistribution; output-name collision rules incl. trailing-lang-code
-stripping; out-of-order batch response correlation via clientIdentifier
-(fake engine shuffles responses); ingest routing for both filter sites;
-mixed-folder rule.
+Unit-tested and pure: decode ladder (UTF-16LE BOM, Windows-1252);
+timestamp round-trip identity with pinned end-times for the real
+fixture; BOM/CRLF/EOF; VTT header block + `Language:` capture;
+NOTE/STYLE/REGION; entity decode/re-escape; mid-word tag-chunk
+stripping (real sample); emptiness predicate (U+00A0, zero-width); run
+detector (line-shift pair definition, chant false-positive, overlap
+transparency, VTT static-cue signature); keep/drop rules (untagged
+one-token line, `[Music]`, karaoke pass-through, tag-free pass-through,
+byte-identical guarantees); timing (ε extension, gap preservation,
+fold direction + contiguity, clamping); chunking (boundary set,
+gap rule, hard cap, run-boundary superset, overlap-solo, Speaker
+prefix); redistribution (worked example, grapheme weights, boundary
+snapping incl. ja target, empty-cue fold-forward, no mid-word
+starts/ends, text-only invariant); batching (clientIdentifier shuffle,
+missing response, sub-batch partial retention); naming (lang-code
+stripping, two-phase claiming, re-run overwrite, mixed-folder);
+`isActive` exhaustive-switch test; ingest routing both sites.
 
-**Real-fixture requirement** (replaces the old draft's "tuning pass"):
-before the reflow algorithm is written, download several actual yt-dlp
-caption files — an English talk, an Urdu track, a Japanese video, a
-music video with a long instrumental gap — check at least one real
-`.vtt` in as a fixture, and lock the reflow tests to them. Synthetic
-fixtures alone are not acceptance.
+**Real fixtures (mandated)**: the live yt-dlp download verified during
+review (`fixture2.en.vtt` — copy from session scratchpad
+`/private/tmp/claude-501/-Users-isupercoder/d3d67335-0e61-464a-b9da-1d6f99a56c3e/scratchpad/fixture2.en.vtt`
+into the test target as the FIRST implementation commit, before
+scratchpad garbage collection) plus the captured C-SPAN roll-up sample
+(`real-rollup-sample.vtt`, same scratchpad `fixtures/` dir). Follow-ups
+when downloadable: an Urdu track, a Japanese video, a music video with
+a long instrumental gap, and a sparse-burst conversational file
+(vlog/Q&A pacing — where the ≥3-pair threshold is most likely to
+under-fire; if it does, allow detection evidence to span >ε gaps while
+keeping ε strictly timing-local).
 
-NOT covered by automated tests (same boundary as the audio translation
-feature): real `NLLanguageRecognizer` accuracy, real `TranslationSession`
-output and pack-download behavior — verified manually on hardware,
-including the two-consecutive-same-target-requests case.
+NOT covered by automated tests (same boundary as the audio feature):
+real `NLLanguageRecognizer` accuracy, real `TranslationSession` output
+and pack-download behavior — manual on-hardware checklist, including
+two consecutive same-target requests.
+
+## Build sequencing (for the implementation fleet)
+
+Land shared types FIRST (Cue/CueLine, the revised TranslationEngine
+protocol with batch/partial-result shape, the Job enum skeleton) before
+parallelizing — `TranslationEngine.swift` is the only cross-workstream
+file. Verified: no other `jobs`-array consumers beyond the enumerated
+sites (RecordingController only reads `translatesToEnglish`/
+`languageCode`). Clean seams: parser / reflow / chunking+redistribution
+/ bridge / integration.
+
+## Ship-time checklist (outside Sources/)
+
+`mac/README.md` (inputs are no longer audio/video only);
+`scripts/` gains a caption smoke test against the checked-in fixture;
+`make-app.sh` CFBundleShortVersionString bump; no
+`CFBundleDocumentTypes` declared → Finder "Open With"/dock drop of
+`.srt`/`.vtt` won't work — recorded as a known limitation (or fixed);
+site/release notes.
 
 ## Out of scope (v1)
 
-- A translation engine for Apple-unsupported languages (ur, bn, fa, pa,
-  ps) — recorded follow-up; v1 ships the availability gate + cleaned
-  track instead.
-- Formats other than `.srt`/`.vtt` (`.sbv`, `.ttml`, `.ass`).
-- Fetching captions directly from a YouTube URL — files the user
-  already downloaded only; the app never contacts YouTube.
-- Styling-faithful output (positioning, colors, karaoke timing).
-- A cancel button for in-flight jobs (pre-existing app-wide gap,
-  backlog).
+- Translation engine for Apple-unsupported languages (ur, bn, fa, pa,
+  ps) — recorded follow-up; v1 ships the gate + cleaned track.
+- Formats other than `.srt`/`.vtt`.
+- Fetching captions from YouTube URLs — the app never contacts YouTube.
+- Styling-faithful output; line wrapping of translated cues.
+- Cancel button (pre-existing app-wide gap, backlog).
+- Picker-level "unsupported language" affordances (folded into the
+  separately filed audio-picker issue).
