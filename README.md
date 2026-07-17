@@ -1,208 +1,111 @@
 # StenoDrop
 
-> Transcribe audio in **any language** → Get clean **English text** + **AI-powered summaries**
+Free, offline transcription for people with folders full of recordings.
+Drop in audio files, whole directories, or downloaded YouTube captions;
+StenoDrop transcribes and translates everything on your own machine.
+Nothing is uploaded, nothing is metered, and the transcript lands right
+next to each source file.
 
-Perfect for non-native English speakers who think in one language but work in English.
+**[Website](https://fahdi.github.io/stenodrop/)** ·
+**[Try it in your browser](https://fahdi.github.io/stenodrop/app/)** ·
+**[Downloads](https://github.com/fahdi/stenodrop/releases/latest)**
+
+## What it does
+
+- **Batch transcription.** Point it at a year of voice memos. Every audio
+  file (and the audio track of your videos) becomes a `.txt` transcript
+  saved beside the original. About 100 languages, with first-class Urdu.
+- **Translation, on device.** One toggle turns any spoken language into
+  clean English text. On the Mac app you can also check multiple target
+  languages and get one transcript file per language, translated locally.
+- **YouTube caption cleanup.** Auto-generated captions download with
+  every line doubled. Drop the `.srt` or `.vtt` on StenoDrop and get a
+  clean, correctly timed track, plus translated versions ready to
+  re-upload. Manually authored files pass through untouched.
+- **Models by capability.** Efficient for quick single-language work,
+  Enhanced for accents and noisy rooms, Maximum for multilingual and
+  Indic-language audio with code-switching. You choose; only the small
+  one downloads by default.
+- **Live recording.** The Mac app records from the microphone with a
+  rolling transcript, then saves the audio and text together.
+- **Private by construction.** Transcription and translation run
+  entirely on your machine. Airplane mode works fine.
+
+## Get it
+
+| Platform | Status | Where |
+|---|---|---|
+| macOS 15+ | Native Swift app | [Releases](https://github.com/fahdi/stenodrop/releases/latest) |
+| Windows 10/11 | Tauri app | [Releases](https://github.com/fahdi/stenodrop/releases/latest) |
+| Linux | AppImage / .deb | [Releases](https://github.com/fahdi/stenodrop/releases/latest) |
+| Android 8+ | Beta APK, sideload | [stenodrop-android](https://github.com/fahdi/stenodrop-android/releases) |
+| Any browser | No install | [Web app](https://fahdi.github.io/stenodrop/app/) |
+| iPhone | Planned | [stenodrop-ios](https://github.com/fahdi/stenodrop-ios) |
+
+Betas are unsigned: on macOS, right-click and Open the first time; on
+Windows, click through SmartScreen.
+
+Known limits, stated plainly: Apple's on-device translation covers about
+25 target languages and does not include Urdu, Bengali, Persian,
+Punjabi, or Pashto. Caption files in those languages still get the
+cleaned, deduplicated track; audio in them still translates to English
+through Whisper itself.
 
 ---
 
-## Try It Online
+## For developers
 
-No install: **[fahdi.github.io/stenodrop/app](https://fahdi.github.io/stenodrop/app/)** runs entirely
-in your browser, nothing uploaded. See the [full site](https://fahdi.github.io/stenodrop/) for the
-native Mac, Windows, Linux, and Android apps.
+This repo holds the Mac app, the Windows/Linux desktop app, the website,
+and the browser app. Android lives in
+[stenodrop-android](https://github.com/fahdi/stenodrop-android); the
+optional cloud transcription server lives in
+[stenodrop-server](https://github.com/fahdi/stenodrop-server).
 
----
+```
+mac/        Native macOS app (SwiftPM, no .xcodeproj), whisper-cli engine
+desktop/    Windows/Linux app (Tauri v2 + Rust, whisper-rs, no ffmpeg)
+docs/       Website (GitHub Pages from main:/docs) + browser app (docs/app/)
+cli/        Original Python CLI, kept for reference
+docs/superpowers/specs/   Design specs, one per feature, reviewed before build
+```
 
-## Mac App
-
-There is now a native macOS app in [`mac/`](mac/): drag-and-drop files or folders for
-batch transcription — offline, free, Whisper small model, Urdu + ~100 languages, with a
-translate-to-English toggle. Transcripts are saved as `.txt` next to each audio file.
+### Mac
 
 ```bash
 brew install whisper-cpp ffmpeg
-cd mac && ./scripts/make-app.sh   # → dist/StenoDrop.app
+cd mac
+swift test                # 120+ unit tests
+./scripts/e2e-test.sh     # real engine smoke test
+./scripts/make-app.sh     # → dist/StenoDrop.app (ad-hoc signed)
 ```
 
-See [mac/README.md](mac/README.md) for details.
+Details, architecture notes, and known limitations: [mac/README.md](mac/README.md).
 
----
-
-## 🎯 Features
-
-✅ **Multilingual Support** - Auto-detects 96+ languages  
-✅ **English Translation** - Always translates to English  
-✅ **AI Summarization** - Extract key points and action items  
-✅ **Local-First** - Runs on your machine (no cloud costs for transcription)  
-✅ **Fast** - Apple Silicon GPU acceleration  
-✅ **Open Source** - MIT License  
-
----
-
-## 🚀 Quick Start
-
-### Installation
+### Desktop (Windows/Linux)
 
 ```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/stenodrop.git
-cd stenodrop/cli
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+cd desktop
+npm install
+cargo test --manifest-path src-tauri/Cargo.toml
+npm run tauri dev
 ```
 
-### Basic Usage
+Releases are cut by `release.yml` on `v*` tags for all three desktop
+platforms.
 
-```bash
-# Transcribe + translate to English
-python stenodrop.py audio.mp3 --no-summarize
+### Web app
 
-# With AI summary (requires OpenAI API key)
-export OPENAI_API_KEY="sk-your-key-here"
-python stenodrop.py audio.mp3 --summary short
-```
+`docs/app/` is a static page: Whisper in the browser via Transformers.js
+plus an opt-in cloud mode against stenodrop-server. Serve `docs/`
+locally with any static file server.
 
----
+### Contributing
 
-## 📖 Examples
+Issues and pull requests are welcome. Feature work here starts from a
+written spec in `docs/superpowers/specs/` and lands with tests; the
+larger recent features were adversarially design-reviewed before
+implementation, and the specs record what was decided and why.
 
-### Example 1: Urdu → English
-```bash
-python stenodrop.py recording.wav --no-summarize
-```
-
-**Result:**
-> "I am trying to monitor my voice and I can see how good my recording is..."
-
-### Example 2: Spanish Meeting → Summary
-```bash
-python stenodrop.py meeting.m4a --summary medium --format md --output result.md
-```
-
----
-
-## 🛠️ Usage
-
-### Command Options
-
-```bash
-python stenodrop.py <audio_file> [OPTIONS]
-```
-
-**Required:**
-- `audio_file` - Path to audio file (mp3, wav, m4a, ogg)
-
-**Options:**
-- `--model {tiny,base,small,medium,large-v2}` - Whisper model size (default: small)
-- `--summary {short,medium,long}` - Summary length (default: short)
-- `--no-summarize` - Skip AI summary, only transcribe
-- `--format {text,md,markdown}` - Output format (default: text)
-- `--output FILE` - Save to file
-- `--api-key KEY` - OpenAI API key (or set `OPENAI_API_KEY` env var)
-
-### Model Sizes
-
-| Model | Size | Speed | Accuracy |
-|-------|------|-------|----------|
-| tiny | 151 MB | ⚡⚡⚡ | ⭐⭐ |
-| base | 290 MB | ⚡⚡ | ⭐⭐⭐ |
-| **small** | 967 MB | ⚡ | ⭐⭐⭐⭐ (recommended) |
-| medium | 1.5 GB | 🐌 | ⭐⭐⭐⭐⭐ |
-| large-v2 | 6 GB | 🐌🐌 | ⭐⭐⭐⭐⭐ |
-
----
-
-## 🧪 Testing
-
-```bash
-# Install test dependencies
-pip install -r requirements-test.txt
-
-# Run tests (fast, no audio processing)
-pytest -v -m "not slow"
-
-# Run integration tests (with real audio)
-pytest -v
-```
-
-**Test Results:** ✅ 19 tests, all passing  
-**Coverage:** 92% on core summarization module
-
-See [cli/TESTING.md](cli/TESTING.md) for details.
-
----
-
-## 📁 Project Structure
-
-```
-cli/
-├── stenodrop.py       # Main CLI tool ⭐
-├── summarize.py            # AI summarization
-├── generate_test_samples.py # Test audio generator
-├── test_stenodrop.py  # Test suite
-├── requirements.txt        # Dependencies
-├── TESTING.md             # Test documentation
-└── USAGE.md               # Detailed usage guide
-
-docs/
-└── PRD.md                 # Product requirements
-```
-
----
-
-## 💡 AI Summarization
-
-To enable AI-powered summaries:
-
-1. Get an OpenAI API key: https://platform.openai.com/api-keys
-2. Set environment variable:
-   ```bash
-   export OPENAI_API_KEY="sk-your-key-here"
-   ```
-3. Run with summary:
-   ```bash
-   python stenodrop.py audio.mp3 --summary short
-   ```
-
-**What you get:**
-- **Summary**: Clean, concise overview
-- **Key Points**: Bullet list of main ideas  
-- **Action Items**: Extracted tasks (if mentioned)
-
----
-
-## 🌍 Supported Languages
-
-Auto-detects and translates from 96+ languages including:
-
-English, Spanish, French, German, Italian, Portuguese, Dutch, Russian, Arabic, Chinese, Japanese, Korean, Hindi, Urdu, Bengali, Turkish, Polish, Ukrainian, Vietnamese, Thai, and many more...
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! Please feel free to submit a Pull Request.
-
----
-
-## 📄 License
-
-MIT License - see LICENSE file for details
-
----
-
-## 🙏 Credits
-
-- Built with [OpenAI Whisper](https://github.com/openai/whisper)
-- Powered by [HuggingFace Transformers](https://huggingface.co/transformers/)
-- Summarization by [OpenAI GPT-4](https://openai.com)
-
----
-
-**Built by [@isupercoder](https://github.com/isupercoder)**
+MIT licensed. Built on [whisper.cpp](https://github.com/ggerganov/whisper.cpp)
+and [OpenAI Whisper](https://github.com/openai/whisper).
+Built by [@fahdi](https://github.com/fahdi).
