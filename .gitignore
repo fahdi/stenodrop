@@ -54,6 +54,9 @@ test-audio/
 *.mp3
 *.m4a
 *.ogg
+# ...but test fixtures must reach CI (the audio patterns above silently
+# excluded these; desktop CI was red from Jul 14 because of it)
+!desktop/src-tauri/tests/fixtures/*
 
 # Environment
 .env
